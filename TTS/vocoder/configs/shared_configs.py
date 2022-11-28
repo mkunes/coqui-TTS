@@ -72,6 +72,8 @@ class BaseGANVocoderConfig(BaseVocoderConfig):
             enable / disable feature matching loss. Defaults to True.
         use_l1_spec_loss (bool):
             enable / disable L1 spectrogram loss. Defaults to True.
+        use_mos_loss (bool):
+            enable / disable loss based on MOS prediction. Defaults to False.
         stft_loss_weight (float):
             Loss weight that multiplies the computed loss value. Defaults to 0.
         subband_stft_loss_weight (float):
@@ -84,6 +86,8 @@ class BaseGANVocoderConfig(BaseVocoderConfig):
             Loss weight that multiplies the computed loss value. Defaults to 100.
         l1_spec_loss_weight (float):
             Loss weight that multiplies the computed loss value. Defaults to 45.
+        mos_loss_weight (float):
+            Loss weight that multiplies the computed loss value. Defaults to 0.
         stft_loss_params (dict):
             Parameters for the STFT loss. Defaults to `{"n_ffts": [1024, 2048, 512], "hop_lengths": [120, 240, 50], "win_lengths": [600, 1200, 240]}`.
         l1_spec_loss_params (dict):
@@ -98,6 +102,8 @@ class BaseGANVocoderConfig(BaseVocoderConfig):
                 "mel_fmin": 0.0,
                 "mel_fmax": None,
             }`
+        mos_loss_params (dict): 
+            Parameters for the MOS loss. Defaults to `{"model_path": None,"max_segment_duration": 30,"min_segment_duration": 10,"orig_sr": 22050,"target_sr": 16000}`
         target_loss (str):
             Target loss name that defines the quality of the model. Defaults to `G_avg_loss`.
         grad_clip (list):
@@ -135,6 +141,7 @@ class BaseGANVocoderConfig(BaseVocoderConfig):
     use_hinge_gan_loss: bool = True
     use_feat_match_loss: bool = True  # requires MelGAN Discriminators (MelGAN and HifiGAN)
     use_l1_spec_loss: bool = True
+    use_mos_loss: bool = False
 
     # loss weights
     stft_loss_weight: float = 0
@@ -143,6 +150,7 @@ class BaseGANVocoderConfig(BaseVocoderConfig):
     hinge_G_loss_weight: float = 0
     feat_match_loss_weight: float = 100
     l1_spec_loss_weight: float = 45
+    mos_loss_weight: float = 0
 
     stft_loss_params: dict = field(
         default_factory=lambda: {
@@ -162,6 +170,16 @@ class BaseGANVocoderConfig(BaseVocoderConfig):
             "n_mels": 80,
             "mel_fmin": 0.0,
             "mel_fmax": None,
+        }
+    )
+
+    mos_loss_params: dict = field(
+        default_factory=lambda: {
+            "model_path": None,
+            "max_segment_duration": 30, 
+            "min_segment_duration": 10, 
+            "orig_sr": 22050, 
+            "target_sr": 16000,
         }
     )
 

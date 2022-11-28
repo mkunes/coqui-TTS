@@ -6,6 +6,7 @@ from tests import get_tests_input_path, get_tests_output_path, get_tests_path
 from TTS.config import BaseAudioConfig
 from TTS.utils.audio import AudioProcessor
 from TTS.vocoder.layers.losses import MelganFeatureLoss, MultiScaleSTFTLoss, STFTLoss, TorchSTFT
+from TTS.vocoder.layers.mos_loss import MOSLoss 
 
 TESTS_PATH = get_tests_path()
 
@@ -15,6 +16,8 @@ os.makedirs(OUT_PATH, exist_ok=True)
 WAV_FILE = os.path.join(get_tests_input_path(), "example_1.wav")
 
 ap = AudioProcessor(**BaseAudioConfig().to_dict())
+
+MOS_MODEL_PATH = None # TODO
 
 
 def test_torch_stft():
@@ -90,3 +93,15 @@ def test_melgan_feature_loss():
     loss_func = MelganFeatureLoss()
     loss = loss_func(feats_fake, feats_real)
     assert loss.item() == 0
+
+def test_mos_loss():
+    mos_loss = MOSLoss(MOS_MODEL_PATH, max_segment_duration=30, min_segment_duration=10, orig_sr=22050, target_sr=16000)
+
+    wav = ap.load_wav(WAV_FILE)
+    wav = torch.from_numpy(wav[None, :]).float()
+
+    loss = mos_loss(wav)
+
+    # MOS score is between 1 and 5 and MOS loss is calculated as max(0,5-mos) => loss must be >=0 && <= 4
+    assert loss.item() >= 0
+    assert loss.item() <= 4

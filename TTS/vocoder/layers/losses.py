@@ -7,6 +7,11 @@ from torch.nn import functional as F
 from TTS.utils.audio.torch_transforms import TorchSTFT
 from TTS.vocoder.utils.distribution import discretized_mix_logistic_loss, gaussian_loss
 
+from TTS.vocoder.layers.mos_loss import MOSLoss 
+
+import datetime
+from timeit import default_timer as timer
+
 #################################
 # GENERATOR LOSSES
 #################################
@@ -236,6 +241,7 @@ class GeneratorLoss(nn.Module):
         self.use_hinge_gan_loss = C.use_hinge_gan_loss if "use_hinge_gan_loss" in C else False
         self.use_feat_match_loss = C.use_feat_match_loss if "use_feat_match_loss" in C else False
         self.use_l1_spec_loss = C.use_l1_spec_loss if "use_l1_spec_loss" in C else False
+        self.use_mos_loss = C.use_mos_loss if "use_mos_loss" in C else False
 
         self.stft_loss_weight = C.stft_loss_weight if "stft_loss_weight" in C else 0.0
         self.subband_stft_loss_weight = C.subband_stft_loss_weight if "subband_stft_loss_weight" in C else 0.0
@@ -243,6 +249,7 @@ class GeneratorLoss(nn.Module):
         self.hinge_gan_loss_weight = C.hinge_G_loss_weight if "hinde_G_loss_weight" in C else 0.0
         self.feat_match_loss_weight = C.feat_match_loss_weight if "feat_match_loss_weight" in C else 0.0
         self.l1_spec_loss_weight = C.l1_spec_loss_weight if "l1_spec_loss_weight" in C else 0.0
+        self.mos_loss_weight = C.mos_loss_weight if "mos_loss_weight" in C else 0.0
 
         if C.use_stft_loss:
             self.stft_loss = MultiScaleSTFTLoss(**C.stft_loss_params)
@@ -257,6 +264,10 @@ class GeneratorLoss(nn.Module):
         if C.use_l1_spec_loss:
             assert C.audio["sample_rate"] == C.l1_spec_loss_params["sample_rate"]
             self.l1_spec_loss = L1SpecLoss(**C.l1_spec_loss_params)
+        if C.use_mos_loss:
+            assert C.audio["sample_rate"] == C.mos_loss_params["orig_sr"]
+            assert C.mos_loss_params["model_path"] is not None, "model path for MOS prediction is not set"
+            self.mos_loss = MOSLoss(**C.mos_loss_params)
 
     def forward(
         self, y_hat=None, y=None, scores_fake=None, feats_fake=None, feats_real=None, y_hat_sub=None, y_sub=None
@@ -264,6 +275,12 @@ class GeneratorLoss(nn.Module):
         gen_loss = 0
         adv_loss = 0
         return_dict = {}
+
+        PRINT_TIME = True
+
+        if PRINT_TIME:
+            print(str(datetime.datetime.now().strftime('%H:%M:%S')) + " Starting loss calculation")
+            losses_start_time = timer()
 
         # STFT Loss
         if self.use_stft_loss:
@@ -285,6 +302,23 @@ class GeneratorLoss(nn.Module):
             return_dict["G_subband_stft_loss_sc"] = subband_stft_loss_sc
             gen_loss = gen_loss + self.subband_stft_loss_weight * (subband_stft_loss_mg + subband_stft_loss_sc)
 
+        # MOS Loss
+        if self.use_mos_loss:
+            if PRINT_TIME:
+                mosloss_start_time = timer()
+            mos_loss = self.mos_loss(y_hat) # TODO: verify if y_hat is the same thing as "speech_array" in the loss function
+            if PRINT_TIME:
+                mosloss_end_time = timer()
+                print("  MOS Loss: %f;  Time elapsed: %f seconds"%(mos_loss,mosloss_end_time-mosloss_start_time))
+            #print("gen_loss without mos_loss: %f"%gen_loss)
+            #print("mos_loss: %f\n"%mos_loss)
+            #print(gen_loss)
+            gen_loss = gen_loss + self.mos_loss_weight * mos_loss
+
+            #mos_loss_y = self.mos_loss(y)
+            #print("mos_loss (y): %f"%mos_loss_y.item())
+
+
         # multiscale MSE adversarial loss
         if self.use_mse_gan_loss and scores_fake is not None:
             mse_fake_loss = _apply_G_adv_loss(scores_fake, self.mse_loss)
@@ -305,6 +339,14 @@ class GeneratorLoss(nn.Module):
         return_dict["loss"] = gen_loss + adv_loss
         return_dict["G_gen_loss"] = gen_loss
         return_dict["G_adv_loss"] = adv_loss
+
+
+        if PRINT_TIME:
+            losses_end_time = timer()
+            print(str(datetime.datetime.now().strftime('%H:%M:%S')) + " Total gen_loss: %f;  Time elapsed: %f seconds"%(gen_loss,losses_end_time-losses_start_time))
+
+
+
         return return_dict
 
 
